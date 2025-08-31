@@ -216,12 +216,35 @@ function extractRoleFromSubject_(subj) {
   return '';
 }
 
-// Company from "… at/with <Company> …" or "<Company> – …"
+// Company from subject (multiple real-world patterns)
 function extractCompanyFromSubject_(subj) {
-  const m1 = subj.match(/\s(?:at|with)\s+([A-Za-z0-9&.,'()\- ]{2,80})(?:$|[\-–—:|]| for | regarding | position | role | opportunity)/i);
-  if (m1 && m1[1]) return cleanCompany_(m1[1]);
-  const m2 = subj.match(/^([A-Za-z0-9&.,'()\- ]{2,80})\s[-–—:]/); // e.g., "Credibly - Thank you..."
-  if (m2 && m2[1]) return cleanCompany_(m2[1]);
+  if (!subj) return '';
+  const s = subj.trim();
+
+  const patterns = [
+    // 1) "Your application to Company", "Thank you for applying to Company"
+    /(?:your\s+application|application|applied|thank you for applying|update)\s+(?:to|with)\s+([A-Za-z0-9&.,'()\- ]{2,80})/i,
+
+    // 2) "... at Company", "... with Company"
+    /(?:at|with)\s+([A-Za-z0-9&.,'()\- ]{2,80})(?=$|[\-–—:|]| for | regarding | position | role | opportunity)/i,
+
+    // 3) "[Company] …", "Company — …", "Company: …", "Company | …"
+    /^\s*\[?\s*([A-Za-z0-9&.,'()\- ]{2,80})\s*\]?\s*[-–—:|]/,
+
+    // 4) "Careers at Company", "Recruiting at Company"
+    /(Careers|Recruiting|Talent(?:\s+Acquisition)?)\s+(?:at|with)\s+([A-Za-z0-9&.,'()\- ]{2,80})/i,
+
+    // 5) "Application Update - Company", "Interview Scheduled: Company"
+    /(?:application|candidate|interview|job)\s+(?:update|receipt|confirmation|scheduled|status)\s*[-–—:|]\s*([A-Za-z0-9&.,'()\- ]{2,80})/i
+  ];
+
+  for (const p of patterns) {
+    const m = s.match(p);
+    if (!m) continue;
+    const raw = m[m.length - 1];           // last capturing group = company
+    const cleaned = cleanCompany_(raw);
+    if (cleaned && !isVendorATS_(cleaned)) return cleaned;
+  }
   return '';
 }
 
@@ -239,7 +262,17 @@ function extractCompanyFromFrom_(fromStr) {
 }
 
 function cleanCompany_(name) {
-  return titleCase_(name.replace(/\s*(careers|recruiting|talent acquisition|notifications?|support)\s*$/i, '').trim());
+  return titleCase_(
+    (name || '')
+      .replace(/^[\s"'[\]()]+|[\s"'[\]()]+$/g, '')                                  // strip quotes/brackets
+      .replace(/\s+(careers|recruiting|talent(?:\s+acquisition)?|notifications?|support|team)$/i, '') // trailing dept words
+      .trim()
+  );
+}
+
+// Ignore common ATS/platforms when they look like a company
+function isVendorATS_(name) {
+  return /(Workday|Greenhouse|Lever|iCIMS|BambooHR|SuccessFactors|SmartRecruiters|Taleo|Ashby|Jobvite|Oracle\s*Cloud|SAP\s*SuccessFactors)/i.test(name || '');
 }
 
 function titleCase_(str) {
